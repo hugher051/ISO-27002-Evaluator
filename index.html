@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>Sistema de Evaluación de Controles ISO 27002</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Estilos para la impresión */
+        @media print {
+            body {
+                font-size: 10pt;
+            }
+            .no-print, .tab-btn, header, select, button:not(.print-btn) {
+                display: none !important;
+            }
+            .tab-section {
+                display: none !important;
+            }
+            #tab-reportes {
+                display: block !important;
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+            }
+            .print-container {
+                display: block !important;
+                page-break-inside: avoid;
+            }
+            canvas {
+                max-height: 250px !important;
+                width: 100% !important;
+            }
+            .grid, .md\:flex {
+                display: block !important;
+            }
+        }
+        /* Estilos para el modal de confirmación */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+
+    <header class="bg-blue-800 shadow-lg flex items-center justify-between px-4 h-16 no-print">
+        <div class="flex items-center gap-4">
+            <img src="https://storage.googleapis.com/workspace-0f70711f-8b4e-4d94-86f1-2a93ccde5887/image/c99472ba-5d8d-4815-a307-e62b06963ef2.png" 
+                 class="bg-white rounded-full h-10 w-10 object-contain"
+                 alt="Logo institucional"
+                 onerror="this.style.display='none';">
+            <h1 class="text-xl md:text-2xl font-bold text-white tracking-wide">
+                Evaluación de Controles ISO 27002
+            </h1>
+        </div>
+        <button onclick="window.print()" class="print-btn bg-red-600 text-white rounded px-4 py-2 hover:bg-red-700 transition-colors font-semibold">
+            Generar Informe PDF
+        </button>
+    </header>
+
+    <main class="max-w-7xl mx-auto mt-6 mb-16 px-4">
+        <div class="mb-6 flex gap-2 sm:gap-4 flex-wrap no-print">
+            <button class="tab-btn bg-blue-600 text-white px-4 py-2 rounded-md shadow hover:bg-blue-700 transition font-semibold" data-tab="controles">Carga de Controles</button>
+            <button class="tab-btn bg-white text-blue-800 px-4 py-2 rounded-md hover:bg-blue-100 transition font-semibold" data-tab="empresas">Empresas</button>
+            <button class="tab-btn bg-white text-blue-800 px-4 py-2 rounded-md hover:bg-blue-100 transition font-semibold" data-tab="evaluacion">Evaluación</button>
+            <button class="tab-btn bg-white text-blue-800 px-4 py-2 rounded-md hover:bg-blue-100 transition font-semibold" data-tab="reportes">Reportes</button>
+        </div>
+
+        <section id="tab-controles" class="tab-section bg-white p-6 rounded-lg shadow-md">
+            <h2 class="font-bold text-2xl mb-4 text-blue-900">Carga de Controles ISO 27002</h2>
+            <p class="mb-4 text-gray-600">Suba el archivo <b>Excel</b> con la matriz de controles. El archivo debe contener las siguientes columnas:</p>
+            <ul class="ml-5 list-disc text-gray-600 mb-5 space-y-1">
+                <li>Modelo de Control (Organizacionales, de Personas, Físicos, Tecnológicos)</li>
+                <li>N.º de Cláusula</li>
+                <li>Descripción del Control</li>
+                <li>Tipo de Control</li>
+                <li>Propiedades de Seguridad de la Información</li>
+                <li>Conceptos de Ciberseguridad</li>
+            </ul>
+            <div class="flex items-center gap-4">
+                <input type="file" id="controlesExcel" accept=".xlsx,.xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                <button id="uploadControlesBtn" class="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2 rounded-md font-semibold transition whitespace-nowrap">Procesar Archivo</button>
+            </div>
+            <div id="controlesUploadMsg" class="mt-3 text-sm h-5"></div>
+            <div class="mt-6 max-h-80 overflow-y-auto">
+                <h3 class="font-semibold text-lg mb-2">Controles Cargados:</h3>
+                <table class="min-w-full text-left text-sm border-collapse" id="controlesTable">
+                    <thead class="bg-blue-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 border-b-2 border-blue-200">Modelo</th>
+                            <th class="p-2 border-b-2 border-blue-200">Cláusula</th>
+                            <th class="p-2 border-b-2 border-blue-200">Descripción</th>
+                            <th class="p-2 border-b-2 border-blue-200">Tipo</th>
+                            <th class="p-2 border-b-2 border-blue-200">Propiedades</th>
+                            <th class="p-2 border-b-2 border-blue-200">Ciberseguridad</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="tab-empresas" class="tab-section hidden bg-white p-6 rounded-lg shadow-md">
+            <h2 class="font-bold text-2xl mb-4 text-blue-900">Gestión de Empresas</h2>
+            <div id="empresaFormContainer">
+                <form id="empresaForm" class="grid md:grid-cols-2 gap-4 mb-8">
+                    <input type="hidden" name="editingIndex">
+                    <div>
+                        <label class="block mb-1 font-semibold text-gray-700">Nombre de la Empresa:</label>
+                        <input class="border p-2 rounded-md w-full" name="nombre" required />
+                    </div>
+                    <div>
+                        <label class="block mb-1 font-semibold text-gray-700">Identificador (RUC/ID):</label>
+                        <input class="border p-2 rounded-md w-full" name="id" required />
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block mb-1 font-semibold text-gray-700">Dirección:</label>
+                        <input class="border p-2 rounded-md w-full" name="direccion" required />
+                    </div>
+                    <div>
+                        <label class="block mb-1 font-semibold text-gray-700">Persona de Contacto:</label>
+                        <input class="border p-2 rounded-md w-full" name="contacto" required />
+                    </div>
+                    <div>
+                        <label class="block mb-1 font-semibold text-gray-700">Correo Electrónico:</label>
+                        <input class="border p-2 rounded-md w-full" type="email" name="email" required />
+                    </div>
+                    <div>
+                        <label class="block mb-1 font-semibold text-gray-700">Teléfono:</label>
+                        <input class="border p-2 rounded-md w-full" name="telefono" required />
+                    </div>
+                    <div class="md:col-span-2 flex gap-4 mt-2">
+                        <button type="submit" class="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2 rounded-md font-semibold transition">Guardar Empresa</button>
+                        <button type="reset" class="bg-gray-200 hover:bg-gray-300 px-5 py-2 rounded-md font-semibold">Limpiar</button>
+                    </div>
+                </form>
+                <div id="empresaFormMsg" class="mt-3 text-sm h-5"></div>
+            </div>
+            <div class="mt-6 max-h-80 overflow-y-auto">
+                <h3 class="font-semibold text-lg mb-2">Empresas Registradas:</h3>
+                <table class="min-w-full text-left text-sm border-collapse" id="empresasTable">
+                    <thead class="bg-blue-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 border-b-2 border-blue-200">Nombre</th>
+                            <th class="p-2 border-b-2 border-blue-200">ID</th>
+                            <th class="p-2 border-b-2 border-blue-200">Contacto</th>
+                            <th class="p-2 border-b-2 border-blue-200">Correo</th>
+                            <th class="p-2 border-b-2 border-blue-200">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="tab-evaluacion" class="tab-section hidden bg-white p-6 rounded-lg shadow-md">
+            <h2 class="font-bold text-2xl mb-4 text-blue-900">Evaluación de Controles</h2>
+            <div class="flex items-center gap-4 mb-4">
+                <label class="font-semibold">Seleccione una empresa:</label>
+                <select id="empresaEvalSelect" class="rounded-md border p-2 w-full max-w-md"></select>
+            </div>
+            <div id="evaluacionArea" class="hidden">
+                <div class="overflow-x-auto max-w-full max-h-[60vh]">
+                    <table class="min-w-full border-collapse text-xs" id="evaluacionTable">
+                        <thead class="bg-blue-100 sticky top-0 z-10">
+                            <tr>
+                                <th class="p-2 border">Modelo</th>
+                                <th class="p-2 border">Cláusula</th>
+                                <th class="p-2 border">Descripción</th>
+                                <th class="p-2 border">Estado</th>
+                                <th class="p-2 border">Responsable</th>
+                                <th class="p-2 border">Doc. Respaldo</th>
+                                <th class="p-2 border">Doc. Formal</th>
+                                <th class="p-2 border">Justificación de aplicabilidad</th>
+                                <th class="p-2 border">Requiere Plan de Acción</th>
+                                <th class="p-2 border">Descripción del Plan de Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex items-center gap-4">
+                    <button id="guardarEvaluacionBtn" class="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2 rounded-md font-semibold transition">Guardar Evaluación</button>
+                    <span id="evaluacionGuardadaMsg" class="text-green-700 font-semibold"></span>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-reportes" class="tab-section hidden bg-white p-6 rounded-lg shadow-md">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-2xl text-blue-900">Reportes y Visualizaciones</h2>
+                <div class="flex items-center gap-4 no-print">
+                    <label class="font-semibold">Empresa evaluada:</label>
+                    <select id="empresaReporteSelect" class="rounded-md border p-2 w-full max-w-md"></select>
+                </div>
+            </div>
+            <div id="reporteArea" class="hidden">
+                 <div class="print-container mb-8 p-6 border rounded-lg bg-yellow-50 border-yellow-200">
+                    <h3 class="font-bold text-lg mb-2 text-yellow-900">Nivel de Madurez General</h3>
+                    <div id="nivelMadurez" class="text-3xl font-bold text-blue-800"></div>
+                    <p class="text-gray-700 mt-2" id="interpretacionMadurez"></p>
+                    <p id="planAccionReporte" class="text-gray-700 mt-2 font-semibold"></p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <div class="print-container p-4 border rounded-lg bg-blue-50">
+                        <h3 class="font-semibold text-blue-900 mb-2">Distribución de Cumplimiento</h3>
+                        <div class="h-64 md:h-80 mx-auto"><canvas id="cumplimientoChart"></canvas></div>
+                        <ul class="mt-4 space-y-1 text-sm text-blue-900" id="indicadoresGeneralesUl"></ul>
+                    </div>
+                    <div class="print-container p-4 border rounded-lg bg-green-50">
+                        <h3 class="font-semibold text-green-900 mb-2">Cumplimiento por Modelo</h3>
+                        <div class="h-64 md:h-80 mx-auto"><canvas id="modeloChart"></canvas></div>
+                         <ul class="mt-4 space-y-1 text-sm text-green-900" id="indicadoresPorModeloUl"></ul>
+                    </div>
+                </div>
+                
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="print-container p-4 border rounded-lg bg-indigo-50">
+                        <h3 class="font-semibold mb-2 text-indigo-900">Propiedades de Seguridad (CIA)</h3>
+                        <div class="h-64 md:h-80 mx-auto"><canvas id="trianguloCIAChart"></canvas></div>
+                        <div id="ciaAnalysis" class="mt-4 text-sm text-indigo-800"></div>
+                    </div>
+                    <div class="print-container p-4 border rounded-lg bg-purple-50">
+                        <h3 class="font-semibold mb-2 text-purple-900">Conceptos de Ciberseguridad</h3>
+                        <div class="h-64 md:h-80 mx-auto"><canvas id="ciberseguridadChart"></canvas></div>
+                        <div id="cibersecurityAnalysis" class="mt-4 text-sm text-purple-800"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="reporteAreaEmpty" class="text-center py-10">
+                <p class="text-gray-500">Seleccione una empresa para ver su reporte de evaluación.</p>
+            </div>
+        </section>
+    </main>
+
+    <div id="confirmationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="text-lg font-bold mb-4">Confirmar Acción</h3>
+            <p id="modalMessage" class="mb-6">¿Está seguro de que desea continuar?</p>
+            <div class="flex justify-center gap-4">
+                <button id="modalConfirmBtn" class="bg-red-600 text-white px-6 py-2 rounded-md font-semibold">Confirmar</button>
+                <button id="modalCancelBtn" class="bg-gray-300 px-6 py-2 rounded-md font-semibold">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// Módulo principal de la aplicación para encapsular la lógica
+(function() {
+    // --- CONSTANTES Y ESTADO ---
+    const STORAGE_KEYS = {
+        CONTROLES: 'iso27002_controles_v2',
+        EMPRESAS: 'iso27002_empresas_v2',
+        EVALUACION: 'iso27002_evaluacion_v2'
+    };
+    let charts = {
+        cia: null,
+        ciberseguridad: null,
+        cumplimiento: null,
+        modelo: null
+    };
+
+    // --- SERVICIO DE DATOS (LocalStorage) ---
+    const dataService = {
+        get: (key) => JSON.parse(localStorage.getItem(key) || '[]'),
+        getMap: (key) => JSON.parse(localStorage.getItem(key) || '{}'),
+        save: (key, data) => localStorage.setItem(key, JSON.stringify(data)),
+    };
+
+    // --- SERVICIO DE UI (Manipulación del DOM) ---
+    const uiService = {
+        // Muestra u oculta el modal de confirmación
+        showModal: (title, message, onConfirm) => {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            const modal = document.getElementById('confirmationModal');
+            modal.classList.remove('hidden');
+            
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+
+            const confirmHandler = () => {
+                onConfirm();
+                uiService.hideModal();
+                cleanup();
+            };
+            const cancelHandler = () => {
+                uiService.hideModal();
+                cleanup();
+            };
+            
+            const cleanup = () => {
+                confirmBtn.removeEventListener('click', confirmHandler);
+                cancelBtn.removeEventListener('click', cancelHandler);
+            };
+
+            confirmBtn.addEventListener('click', confirmHandler);
+            cancelBtn.addEventListener('click', cancelHandler);
+        },
+        hideModal: () => document.getElementById('confirmationModal').classList.add('hidden'),
+        // Muestra un mensaje temporal
+        showMessage: (elementId, text, isError = false, duration = 3000) => {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            el.textContent = text;
+            el.className = isError ? 'text-red-600 font-semibold' : 'text-green-700 font-semibold';
+            setTimeout(() => el.textContent = '', duration);
+        },
+        // Renderiza la tabla de controles
+        renderTablaControles: () => {
+            const controles = dataService.get(STORAGE_KEYS.CONTROLES);
+            const tbody = document.querySelector("#controlesTable tbody");
+            tbody.innerHTML = ""; // Limpiar antes de renderizar
+            if (controles.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='6' class='text-center p-4 text-gray-500'>No hay controles cargados.</td></tr>";
+                return;
+            }
+            controles.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 border-b';
+                tr.innerHTML = `
+                    <td class="p-2">${c.modelo}</td> <td class="p-2">${c.clausula}</td>
+                    <td class="p-2">${c.descripcion}</td> <td class="p-2">${c.tipo}</td>
+                    <td class="p-2">${c.propiedades}</td> <td class="p-2">${c.ciberseguridad}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        },
+        // Renderiza la tabla de empresas
+        renderEmpresasTable: () => {
+            const empresas = dataService.get(STORAGE_KEYS.EMPRESAS);
+            const tbody = document.querySelector('#empresasTable tbody');
+            tbody.innerHTML = "";
+            if (empresas.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='5' class='text-center p-4 text-gray-500'>No hay empresas registradas.</td></tr>";
+                return;
+            }
+            empresas.forEach((e, i) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 border-b';
+                tr.innerHTML = `
+                    <td class="p-2 font-semibold">${e.nombre}</td> <td class="p-2">${e.id}</td>
+                    <td class="p-2">${e.contacto}</td> <td class="p-2">${e.email}</td>
+                    <td class="p-2">
+                        <button class="text-blue-600 hover:underline mr-2" data-action="edit" data-index="${i}">Editar</button>
+                        <button class="text-red-600 hover:underline" data-action="delete" data-index="${i}">Eliminar</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        },
+        // Carga las empresas en los selectores
+        populateEmpresaSelects: () => {
+            const empresas = dataService.get(STORAGE_KEYS.EMPRESAS);
+            const selects = ['#empresaEvalSelect', '#empresaReporteSelect'];
+            selects.forEach(selector => {
+                const select = document.querySelector(selector);
+                select.innerHTML = empresas.length ?
+                    '<option value="">Seleccione una empresa...</option>' +
+                    empresas.map(e => `<option value="${e.id}">${e.nombre} (${e.id})</option>`).join('') :
+                    "<option>No hay empresas registradas</option>";
+            });
+        }
+    };
+
+    // --- LÓGICA DE LA APLICACIÓN ---
+
+    // Pestañas
+    function setupTabs() {
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabSections = document.querySelectorAll('.tab-section');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => {
+                    b.classList.remove('bg-blue-600', 'text-white');
+                    b.classList.add('bg-white', 'text-blue-800');
+                });
+                btn.classList.add('bg-blue-600', 'text-white');
+                btn.classList.remove('bg-white', 'text-blue-800');
+                
+                tabSections.forEach(sec => sec.classList.add('hidden'));
+                document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+                
+                // Cargar datos dinámicamente al cambiar de pestaña
+                switch (btn.dataset.tab) {
+                    case "evaluacion":
+                        document.querySelector('#empresaEvalSelect').dispatchEvent(new Event('change'));
+                        break;
+                    case "reportes":
+                        document.querySelector('#empresaReporteSelect').dispatchEvent(new Event('change'));
+                        break;
+                }
+            });
+        });
+    }
+
+    // Lógica de carga de controles
+    function setupControles() {
+        document.getElementById('uploadControlesBtn').onclick = () => {
+            const input = document.getElementById('controlesExcel');
+            if (!input.files[0]) {
+                uiService.showMessage('controlesUploadMsg', 'Por favor, seleccione un archivo.', true);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const wb = XLSX.read(e.target.result, { type: "binary" });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    if (!rawData || rawData.length < 2 || rawData[0].length < 6) {
+                        throw new Error("El archivo no tiene datos válidos o la estructura es incorrecta.");
+                    }
+                    const controles = rawData.slice(1).map(row => ({
+                        modelo: String(row[0] || '').trim(),
+                        clausula: String(row[1] || '').trim(),
+                        descripcion: String(row[2] || '').trim(),
+                        tipo: String(row[3] || '').trim(),
+                        propiedades: String(row[4] || '').trim(),
+                        ciberseguridad: String(row[5] || '').trim()
+                    })).filter(c => c.modelo && c.clausula); // Filtrar filas vacías
+
+                    dataService.save(STORAGE_KEYS.CONTROLES, controles);
+                    uiService.showMessage('controlesUploadMsg', `Se cargaron ${controles.length} controles correctamente.`);
+                    uiService.renderTablaControles();
+                } catch (error) {
+                    uiService.showMessage('controlesUploadMsg', `Error al procesar el archivo: ${error.message}`, true);
+                }
+            };
+            reader.readAsBinaryString(input.files[0]);
+        };
+    }
+
+    // Lógica de gestión de empresas
+    function setupEmpresas() {
+        const form = document.getElementById('empresaForm');
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const empresa = {
+                nombre: formData.get('nombre').trim(),
+                id: formData.get('id').trim(),
+                direccion: formData.get('direccion').trim(),
+                contacto: formData.get('contacto').trim(),
+                email: formData.get('email').trim(),
+                telefono: formData.get('telefono').trim()
+            };
+            const editingIndex = formData.get('editingIndex');
+            let empresas = dataService.get(STORAGE_KEYS.EMPRESAS);
+
+            if (editingIndex) { // Editando
+                empresas[editingIndex] = empresa;
+            } else { // Creando
+                if (empresas.some(emp => emp.id === empresa.id)) {
+                    uiService.showMessage('empresaFormMsg', 'Ya existe una empresa con este identificador.', true);
+                    return;
+                }
+                empresas.push(empresa);
+            }
+            dataService.save(STORAGE_KEYS.EMPRESAS, empresas);
+            uiService.renderEmpresasTable();
+            uiService.populateEmpresaSelects();
+            form.reset();
+            form.elements.editingIndex.value = '';
+            uiService.showMessage('empresaFormMsg', 'Empresa guardada con éxito.');
+        });
+
+        form.addEventListener('reset', () => form.elements.editingIndex.value = '');
+
+        document.getElementById('empresasTable').addEventListener('click', (e) => {
+            if (e.target.dataset.action === 'edit') {
+                const index = e.target.dataset.index;
+                const empresa = dataService.get(STORAGE_KEYS.EMPRESAS)[index];
+                if (!empresa) return;
+                form.elements.nombre.value = empresa.nombre;
+                form.elements.id.value = empresa.id;
+                form.elements.direccion.value = empresa.direccion;
+                form.elements.contacto.value = empresa.contacto;
+                form.elements.email.value = empresa.email;
+                form.elements.telefono.value = empresa.telefono;
+                form.elements.editingIndex.value = index;
+                form.scrollIntoView({ behavior: 'smooth' });
+            }
+            if (e.target.dataset.action === 'delete') {
+                const index = e.target.dataset.index;
+                const empresas = dataService.get(STORAGE_KEYS.EMPRESAS);
+                const empresaId = empresas[index]?.id;
+                uiService.showModal('Eliminar Empresa', `¿Está seguro de que desea eliminar a "${empresas[index].nombre}"? Esta acción no se puede deshacer.`, () => {
+                    empresas.splice(index, 1);
+                    dataService.save(STORAGE_KEYS.EMPRESAS, empresas);
+                    // Eliminar evaluaciones asociadas
+                    let evaluaciones = dataService.getMap(STORAGE_KEYS.EVALUACION);
+                    if (evaluaciones[empresaId]) {
+                        delete evaluaciones[empresaId];
+                        dataService.save(STORAGE_KEYS.EVALUACION, evaluaciones);
+                    }
+                    uiService.renderEmpresasTable();
+                    uiService.populateEmpresaSelects();
+                });
+            }
+        });
+    }
+    
+    // Lógica de evaluación
+    function setupEvaluacion() {
+        const select = document.getElementById('empresaEvalSelect');
+        const evaluacionArea = document.getElementById('evaluacionArea');
+        const tbody = document.getElementById('evaluacionTable').querySelector('tbody');
+
+        select.addEventListener('change', () => {
+            const empresaId = select.value;
+            if (!empresaId) {
+                evaluacionArea.classList.add('hidden');
+                return;
+            }
+            const controles = dataService.get(STORAGE_KEYS.CONTROLES);
+            if (controles.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='10' class='text-center p-4 text-red-500'>Debe cargar los controles primero en la pestaña 'Carga de Controles'.</td></tr>";
+                evaluacionArea.classList.remove('hidden');
+                return;
+            }
+            const evaluaciones = dataService.getMap(STORAGE_KEYS.EVALUACION);
+            const empresaEval = evaluaciones[empresaId] || {};
+            
+            tbody.innerHTML = "";
+            controles.forEach((c, ix) => {
+                const evalItem = empresaEval[ix] || {};
+                const planRequerido = evalItem.estado && evalItem.estado !== 'cumple' && evalItem.estado !== 'noaplica';
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b';
+                tr.innerHTML = `
+                    <td class="p-1 border">${c.modelo}</td>
+                    <td class="p-1 border">${c.clausula}</td>
+                    <td class="p-1 border">${c.descripcion}</td>
+                    <td class="p-1 border">
+                        <select name="estado" data-ix="${ix}" class="border rounded p-1 w-full seleccion-cumplimiento">
+                            <option value="">Seleccione...</option>
+                            <option value="cumple" ${evalItem.estado === "cumple" ? "selected" : ""}>Cumple Total (100%)</option>
+                            <option value="parcial" ${evalItem.estado === "parcial" ? "selected" : ""}>Cumple Parcial (50%)</option>
+                            <option value="noimplementado" ${evalItem.estado === "noimplementado" ? "selected" : ""}>No Implementado (25%)</option>
+                            <option value="nocumple" ${evalItem.estado === "nocumple" ? "selected" : ""}>No Cumple (0%)</option>
+                            <option value="noaplica" ${evalItem.estado === "noaplica" ? "selected" : ""}>No Aplica</option>
+                        </select>
+                    </td>
+                    <td class="p-1 border"><input type="text" name="responsable" data-ix="${ix}" value="${evalItem.responsable || ''}" class="border rounded p-1 w-full"/></td>
+                    <td class="p-1 border text-center"><input type="checkbox" name="docRespaldo" data-ix="${ix}" ${evalItem.docRespaldo ? 'checked' : ''} class="h-5 w-5"/></td>
+                    <td class="p-1 border text-center"><input type="checkbox" name="docFormal" data-ix="${ix}" ${evalItem.docFormal ? 'checked' : ''} class="h-5 w-5"/></td>
+                    <td class="p-1 border"><input type="text" name="justificacion" data-ix="${ix}" value="${evalItem.justificacion || ''}" class="border rounded p-1 w-full"/></td>
+                    <td class="p-1 border text-center"><input type="checkbox" name="planRequerido" data-ix="${ix}" ${planRequerido ? 'checked' : ''} disabled class="h-5 w-5"/></td>
+                    <td class="p-1 border"><input type="text" name="planDescripcion" data-ix="${ix}" value="${evalItem.planDescripcion || ''}" class="border rounded p-1 w-full"/></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            evaluacionArea.classList.remove('hidden');
+        });
+
+        tbody.addEventListener('change', (e) => {
+            if (e.target.classList.contains('seleccion-cumplimiento')) {
+                const select = e.target;
+                const tr = select.closest('tr');
+                if (!tr) return;
+                const planCheckbox = tr.querySelector('input[name="planRequerido"]');
+                const estado = select.value;
+                planCheckbox.checked = estado && estado !== 'cumple' && estado !== 'noaplica';
+            }
+        });
+
+        document.getElementById('guardarEvaluacionBtn').onclick = () => {
+            const empresaId = select.value;
+            if (!empresaId) return;
+            const evaluacion = {};
+            const rows = tbody.querySelectorAll("tr");
+            rows.forEach((tr, ix) => {
+                const getInputValue = (name) => tr.querySelector(`[name=${name}]`)?.value || '';
+                const getInputChecked = (name) => tr.querySelector(`[name=${name}]`)?.checked || false;
+
+                evaluacion[ix] = {
+                    estado: getInputValue('estado'),
+                    responsable: getInputValue('responsable'),
+                    docRespaldo: getInputChecked('docRespaldo'),
+                    docFormal: getInputChecked('docFormal'),
+                    justificacion: getInputValue('justificacion'),
+                    planDescripcion: getInputValue('planDescripcion')
+                };
+            });
+            let allEvals = dataService.getMap(STORAGE_KEYS.EVALUACION);
+            allEvals[empresaId] = evaluacion;
+            dataService.save(STORAGE_KEYS.EVALUACION, allEvals);
+            uiService.showMessage('evaluacionGuardadaMsg', 'Evaluación guardada correctamente.');
+        };
+    }
+
+    // Lógica de reportes
+    function setupReportes() {
+        const select = document.getElementById('empresaReporteSelect');
+        select.addEventListener('change', renderReporte);
+    }
+
+    function renderReporte() {
+        const empresaId = document.getElementById('empresaReporteSelect').value;
+        const reporteArea = document.getElementById('reporteArea');
+        const emptyArea = document.getElementById('reporteAreaEmpty');
+
+        if (!empresaId) {
+            reporteArea.classList.add('hidden');
+            emptyArea.classList.remove('hidden');
+            return;
+        }
+
+        const controles = dataService.get(STORAGE_KEYS.CONTROLES);
+        const evaluaciones = dataService.getMap(STORAGE_KEYS.EVALUACION);
+        const empresaEval = evaluaciones[empresaId] || {};
+
+        if (Object.keys(empresaEval).length === 0) {
+            reporteArea.classList.add('hidden');
+            emptyArea.classList.remove('hidden');
+            emptyArea.innerHTML = `<p class="text-gray-500">Esta empresa aún no ha sido evaluada. Vaya a la pestaña 'Evaluación'.</p>`;
+            return;
+        }
+
+        reporteArea.classList.remove('hidden');
+        emptyArea.classList.add('hidden');
+        
+        // --- Cálculos ---
+        const resultados = calcularResultados(controles, empresaEval);
+
+        // --- Renderizado de Indicadores ---
+        document.getElementById('indicadoresGeneralesUl').innerHTML = `
+            <li>Total de controles: <b>${controles.length}</b></li>
+            <li>Controles aplicables: <b>${resultados.stats.aplicables}</b></li>
+            <li>Cumple total (100%): <b class="text-green-600">${resultados.stats.cumplidos}</b></li>
+            <li>Cumple parcial (50%): <b class="text-yellow-600">${resultados.stats.parciales}</b></li>
+            <li>No implementado (25%): <b class="text-orange-600">${resultados.stats.noimplementados}</b></li>
+            <li>No cumple (0%): <b class="text-red-600">${resultados.stats.nocumple}</b></li>
+            <li>No aplica: <b>${resultados.stats.noaplica}</b></li>
+        `;
+
+        document.getElementById('indicadoresPorModeloUl').innerHTML = Object.entries(resultados.modelos).map(([modelo, vals]) => {
+            const total = vals.cumple + vals.parcial + vals.noimplementado + vals.nocumple;
+            const puntaje = (vals.cumple * 100 + vals.parcial * 50 + vals.noimplementado * 25);
+            const porc = total > 0 ? (puntaje / (total * 100) * 100).toFixed(1) : "0.0";
+            return `<li><b>${modelo}:</b> ${porc}% de cumplimiento</li>`;
+        }).join('');
+        
+        document.getElementById('nivelMadurez').innerHTML = `${resultados.madurez.porcentaje.toFixed(1)}% <span class="text-xl font-normal">(${resultados.madurez.interpretacion})</span>`;
+        document.getElementById('interpretacionMadurez').textContent = resultados.madurez.descripcion;
+        document.getElementById('planAccionReporte').innerHTML = `Planes de Acción Propuestos: <b class="text-red-600 text-lg">${resultados.planesDeAccion}</b>`;
+
+        // --- Renderizado de Gráficos ---
+        renderizarGraficos(resultados);
+    }
+    
+    function calcularResultados(controles, empresaEval) {
+        let stats = { cumplidos: 0, parciales: 0, noimplementados: 0, nocumple: 0, noaplica: 0, aplicables: 0 };
+        let modelos = {};
+        let sumPuntaje = 0;
+        let ciaCount = { Confidencialidad: 0, Integridad: 0, Disponibilidad: 0 };
+        let ciberMap = {};
+        let planesDeAccionRequeridos = 0;
+
+        controles.forEach((c, ix) => {
+            const evalItem = empresaEval[ix];
+            if (!modelos[c.modelo]) modelos[c.modelo] = { cumple: 0, parcial: 0, noimplementado: 0, nocumple: 0 };
+            
+            if (evalItem && evalItem.estado !== "noaplica") {
+                stats.aplicables++;
+                if (evalItem.estado !== 'cumple') {
+                    planesDeAccionRequeridos++;
+                }
+                switch (evalItem.estado) {
+                    case "cumple": stats.cumplidos++; modelos[c.modelo].cumple++; sumPuntaje += 100; break;
+                    case "parcial": stats.parciales++; modelos[c.modelo].parcial++; sumPuntaje += 50; break;
+                    case "noimplementado": stats.noimplementados++; modelos[c.modelo].noimplementado++; sumPuntaje += 25; break;
+                    case "nocumple": stats.nocumple++; modelos[c.modelo].nocumple++; sumPuntaje += 0; break;
+                }
+            } else {
+                stats.noaplica++;
+            }
+
+            // Conteo para gráficos CIA (se cuentan todos los controles)
+             (c.propiedades || "").split(/[,;\n]+/).forEach(p => {
+                const prop = p.trim().toLowerCase();
+                if (prop === 'confidencialidad') ciaCount.Confidencialidad++;
+                else if (prop === 'integridad') ciaCount.Integridad++;
+                else if (prop === 'disponibilidad') ciaCount.Disponibilidad++;
+            });
+
+            // Conteo para Ciberseguridad
+            (c.ciberseguridad || "").split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).forEach(t => {
+                ciberMap[t] = (ciberMap[t] || 0) + 1;
+            });
+        });
+
+        const porcentajeMadurez = stats.aplicables > 0 ? (sumPuntaje / (stats.aplicables * 100)) * 100 : 0;
+        let interpretacion, descripcion;
+        if (porcentajeMadurez <= 15) { interpretacion = "Nivel 1: Inicial"; descripcion = "Procesos impredecibles y reactivos. El éxito depende del esfuerzo individual."; }
+        else if (porcentajeMadurez <= 40) { interpretacion = "Nivel 2: Gestionado"; descripcion = "Procesos básicos establecidos, pero a menudo inconsistentes y reactivos."; }
+        else if (porcentajeMadurez <= 70) { interpretacion = "Nivel 3: Definido"; descripcion = "Procesos estandarizados y proactivos. Existe una comprensión organizacional."; }
+        else if (porcentajeMadurez <= 90) { interpretacion = "Nivel 4: Gestionado Cuantitativamente"; descripcion = "Los procesos se miden y controlan con métricas y análisis cuantitativos."; }
+        else { interpretacion = "Nivel 5: Optimizado"; descripcion = "Enfoque en la mejora continua de los procesos a través de la innovación y el feedback."; }
+
+        return {
+            stats,
+            modelos,
+            madurez: { porcentaje: porcentajeMadurez, interpretacion, descripcion },
+            ciaCount,
+            ciberMap,
+            planesDeAccion: planesDeAccionRequeridos
+        };
+    }
+
+    function renderizarGraficos(resultados) {
+        // Destruir gráficos anteriores para evitar solapamiento
+        Object.values(charts).forEach(chart => chart?.destroy());
+
+        // Gráfico de Cumplimiento General
+        charts.cumplimiento = new Chart(document.getElementById("cumplimientoChart").getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ["Cumple Total", "Cumple Parcial", "No Implementado", "No Cumple", "No Aplica"],
+                datasets: [{
+                    data: [
+                        resultados.stats.cumplidos,
+                        resultados.stats.parciales,
+                        resultados.stats.noimplementados,
+                        resultados.stats.nocumple,
+                        resultados.stats.noaplica
+                    ],
+                    backgroundColor: ["#22c55e", "#facc15", "#fb923c", "#ef4444", "#9ca3af"]
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+
+        // Gráfico de Cumplimiento por Modelo
+        const modeloLabels = Object.keys(resultados.modelos);
+        charts.modelo = new Chart(document.getElementById("modeloChart").getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: modeloLabels,
+                datasets: [
+                    {
+                        label: 'Cumple Total',
+                        data: modeloLabels.map(m => resultados.modelos[m].cumple),
+                        backgroundColor: '#22c55e'
+                    },
+                    {
+                        label: 'Parcial',
+                        data: modeloLabels.map(m => resultados.modelos[m].parcial),
+                        backgroundColor: '#facc15'
+                    },
+                    {
+                        label: 'No Implementado',
+                        data: modeloLabels.map(m => resultados.modelos[m].noimplementado),
+                        backgroundColor: '#fb923c'
+                    },
+                    {
+                        label: 'No Cumple',
+                        data: modeloLabels.map(m => resultados.modelos[m].nocumple),
+                        backgroundColor: '#ef4444'
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked: true }, y: { stacked: true } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+
+        // Gráfico CIA
+        charts.cia = new Chart(document.getElementById("trianguloCIAChart").getContext('2d'), {
+            type: "radar",
+            data: {
+                labels: Object.keys(resultados.ciaCount),
+                datasets: [{
+                    label: "Controles por Propiedad",
+                    data: Object.values(resultados.ciaCount),
+                    backgroundColor: "rgba(79, 70, 229, 0.2)",
+                    borderColor: "#4f46e5",
+                    pointBackgroundColor: "#4f46e5"
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        document.getElementById("ciaAnalysis").innerHTML = `
+            El sistema de controles muestra un enfoque en las siguientes áreas:
+            <b>${resultados.ciaCount.Confidencialidad}</b> en Confidencialidad,
+            <b>${resultados.ciaCount.Integridad}</b> en Integridad y
+            <b>${resultados.ciaCount.Disponibilidad}</b> en Disponibilidad.
+            Un balance entre estos tres pilares es clave para una seguridad robusta.`;
+
+        // Gráfico Ciberseguridad
+        const sortedCiber = Object.entries(resultados.ciberMap).sort(([, a], [, b]) => b - a);
+        charts.ciberseguridad = new Chart(document.getElementById("ciberseguridadChart").getContext('2d'), {
+            type: "bar",
+            data: {
+                labels: sortedCiber.map(([label]) => label),
+                datasets: [{
+                    label: "Número de Controles",
+                    data: sortedCiber.map(([, data]) => data),
+                    backgroundColor: "rgba(124, 58, 237, 0.6)",
+                    borderColor: "#7c3aed",
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } } }
+        });
+        
+        let ciberAnalysisText = "No se encontraron conceptos de ciberseguridad definidos.";
+        if (sortedCiber.length > 0) {
+            ciberAnalysisText = `El concepto más frecuente es <b>"${sortedCiber[0][0]}"</b> con <b>${sortedCiber[0][1]}</b> controles, indicando un fuerte enfoque en esta área. `;
+            if (sortedCiber.length > 1) {
+                const leastFrequent = sortedCiber[sortedCiber.length - 1];
+                ciberAnalysisText += `En contraste, <b>"${leastFrequent[0]}"</b> es el menos frecuente con <b>${leastFrequent[1]}</b>, lo que podría señalar un área para revisar.`;
+            }
+        }
+        document.getElementById("cibersecurityAnalysis").innerHTML = ciberAnalysisText;
+    }
+
+
+    // --- INICIALIZACIÓN ---
+    function init() {
+        setupTabs();
+        setupControles();
+        setupEmpresas();
+        setupEvaluacion();
+        setupReportes();
+
+        // Carga inicial de datos en las tablas y selectores
+        uiService.renderTablaControles();
+        uiService.renderEmpresasTable();
+        uiService.populateEmpresaSelects();
+        
+        // Disparar el evento change para cargar la primera empresa si existe
+        document.querySelector('#empresaEvalSelect').dispatchEvent(new Event('change'));
+        document.querySelector('#empresaReporteSelect').dispatchEvent(new Event('change'));
+    }
+
+    // Ejecutar al cargar el DOM
+    document.addEventListener('DOMContentLoaded', init);
+
+})();
+</script>
+</body>
+</html>
